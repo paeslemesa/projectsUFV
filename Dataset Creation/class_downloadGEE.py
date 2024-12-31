@@ -191,10 +191,11 @@ class gedi_download(object):
             fileNamePrefix=image_name,
             region=self.ee_geom.coordinates().getInfo(),
             scale=30,  # Resolution in meters
-            crs="EPSG:4326"  # CRS
+            crs="EPSG:4326",  # CRS
+            maxPixels=1e15  # Increase this if needed
         )
         task.start()
-        print(f"Export task for {image_name} started.")
+        #print(f"Export task for {image_name} started.")
     
     def export_all_images(self):
         try:
