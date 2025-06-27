@@ -5,7 +5,7 @@ strict digraph model {
 	0 [label=<
                     <TABLE BORDER="0" CELLBORDER="1"
                     CELLSPACING="0" CELLPADDING="4">
-                        <TR><TD>input-tensor<BR/>depth:0</TD><TD>(32, 12, 128, 128)</TD></TR>
+                        <TR><TD>input-tensor<BR/>depth:0</TD><TD>(32, 15, 128, 128)</TD></TR>
                     </TABLE>> fillcolor=lightyellow]
 	1 [label=<
                     <TABLE BORDER="0" CELLBORDER="1"
@@ -13,7 +13,7 @@ strict digraph model {
                     <TR>
                         <TD ROWSPAN="2">Conv2d<BR/>depth:2</TD>
                         <TD COLSPAN="2">input:</TD>
-                        <TD COLSPAN="2">(32, 12, 128, 128) </TD>
+                        <TD COLSPAN="2">(32, 15, 128, 128) </TD>
                     </TR>
                     <TR>
                         <TD COLSPAN="2">output: </TD>

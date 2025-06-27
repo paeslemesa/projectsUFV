@@ -32,13 +32,13 @@ import funcao_treino
 #------------------------------------------------------------------------------------
 
 # Caminho dos dados
-caminho = "/mnt/d/Doutorado_UFV/DATASETS/cerradata4mm/cerradata_4mm"
+caminho = "/media/sabrina/Sabrina/Doutorado_UFV/DATASETS/cerradata4mm/cerradata_4mm"
 
 # Hiperparâmetros
-batch_size       = 16       
-num_workers      = 4        
+batch_size       = 32      
+num_workers      = 20        
 n_classes        = 7        
-n_canais         = 12       
+n_canais         = 15       
 height, width    = 128, 128
 
 epocas           = 1    
@@ -66,9 +66,9 @@ if dataset is None or len(dataset) == 0:
     raise ValueError("Dataset não carregado corretamente ou está vazio.")
 
 
-#subset_indices = list(range(1000))
-#subset = Subset(dataset, subset_indices)
-#dataset = subset
+subset_indices = list(range(100))  # Selecionar os primeiros 10.000 exemplos
+subset = Subset(dataset, subset_indices)
+dataset = subset
 
 # Dividir em treino e validação
 razao_treino = 0.8
@@ -115,10 +115,6 @@ dataloaders = {
 #model = deeplabv3_Sentinel3(num_classes=n_classes, in_channels=n_canais).to(device)
 model = EfficientUNet(in_channels=n_canais, num_classes=n_classes)
 
-# Visualizar arquitetura do modelo
-input_tensor = torch.randn(batch_size, n_canais, height, width).to(device)
-graph = draw_graph(model, input_data=input_tensor, depth=3)
-graph.visual_graph.render("segformer_arch", format="png")
 
 #%%------------------------------------------------------------------------------------
 # OTIMIZADOR E FUNÇÃO DE PERDA
@@ -145,8 +141,8 @@ def perdas_combinadas(logits, targets):
 #------------------------------------------------------------------------------------
 
 if __name__ == '__main__':
-    import torch.multiprocessing as mp
-    mp.set_start_method('spawn', force=True)
+    #import torch.multiprocessing as mp
+    #mp.set_start_method('spawn', force=True)
 
 
     modelo_treinado = funcao_treino.treino(
