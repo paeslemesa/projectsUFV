@@ -7,7 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import amp
 
-from tqdm import tqdm
+from tqdm import tqdm as tqdm_inner  # Optional alias to distinguish inner bar
 import os
 import datetime
 import numpy as np
@@ -76,7 +76,7 @@ def treino(
 
     scaler = torch.amp.GradScaler(device=device, enabled=use_amp)
 
-    for epoch in tqdm(range(n_epochs)):
+    for epoch in range(n_epochs):
         since = time.time()
         if verbose:
             print(f"\n🟦 Época {epoch+1}/{n_epochs}")
@@ -94,7 +94,9 @@ def treino(
             runnin_miou = 0.0
 
             # Iterar sobre os dados
-            for inputs, labels in dataloaders[phase]:
+            
+            loop = tqdm_inner(dataloaders[phase], desc=f"{phase.capitalize()} [{epoch+1}/{n_epochs}]", leave=False)
+            for inputs, labels in loop:
                 inputs = inputs.to(device)
                 labels = labels.to(device)
 
@@ -125,7 +127,7 @@ def treino(
             epoch_miou = runnin_miou  / len(dataloaders[phase].dataset)
 
             if verbose:
-                print(f"{phase} Loss: {epoch_loss:.4f}")
+                print(f"📊 {phase.upper()} — Loss: {epoch_loss:.4f} | Acc: {epoch_acc:.4f} | mIoU: {epoch_miou:.4f}")
 
             # Histórico
             history.append({
@@ -161,7 +163,8 @@ def treino(
                     model.load_state_dict(best_model_wts)
                     salvar_logs(history, save_dir)
                     return model
-
+        
+        salvar_logs(history, save_dir)
         time_elapsed = time.time() - since
         if verbose:
             print(f"⏱ Tempo da época: {time_elapsed // 60:.0f}m {time_elapsed % 60:.0f}s")

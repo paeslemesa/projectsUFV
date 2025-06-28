@@ -6,11 +6,11 @@ import os
 # PyTorch
 import torch
 from torch.utils.data import random_split, DataLoader, Subset
-import torch.multiprocessing as mp
+#import torch.multiprocessing as mp
 
 # Visualização de modelo
-from torchinfo import summary
-from torchview import draw_graph
+#from torchinfo import summary
+#from torchview import draw_graph
 
 # Visualização e análise
 import matplotlib.pyplot as plt
@@ -32,7 +32,7 @@ import funcao_treino
 #------------------------------------------------------------------------------------
 
 # Caminho dos dados
-caminho = "/media/sabrina/Sabrina/Doutorado_UFV/DATASETS/cerradata4mm/cerradata_4mm"
+caminho = "/home/sabrina/Documents/Datasets/cerradata4mm/cerradata_4mm/"
 
 # Hiperparâmetros
 batch_size       = 32      
@@ -40,10 +40,10 @@ num_workers      = 20
 n_classes        = 7        
 n_canais         = 15       
 height, width    = 128, 128
-
-epocas           = 1    
+epocas           = 100    
 taxa_aprendizagem= 1e-2 
 taxa_decaimento  = 1e-2 
+n_samples        = None
 
 # Verificar se há GPU disponível
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -65,10 +65,10 @@ dataset = CerraDataset(
 if dataset is None or len(dataset) == 0:
     raise ValueError("Dataset não carregado corretamente ou está vazio.")
 
-
-subset_indices = list(range(100))  # Selecionar os primeiros 10.000 exemplos
-subset = Subset(dataset, subset_indices)
-dataset = subset
+if n_samples is not None:
+    subset_indices = list(range(100))  # Selecionar os primeiros 10.000 exemplos
+    subset = Subset(dataset, subset_indices)
+    dataset = subset
 
 # Dividir em treino e validação
 razao_treino = 0.8
@@ -86,8 +86,8 @@ train_loader = DataLoader(
     train_dataset,
     batch_size=batch_size,
     shuffle=True,
-    num_workers=num_workers,
-    #pin_memory=torch.cuda.is_available()
+    #num_workers=num_workers,
+    pin_memory=torch.cuda.is_available()
 )
 
 # Dataloader para validação
@@ -95,9 +95,8 @@ val_loader = DataLoader(
     val_dataset,
     batch_size=batch_size,
     shuffle=False,
-    num_workers=num_workers,
-
-    #pin_memory=torch.cuda.is_available()
+    #num_workers=num_workers,
+    pin_memory=torch.cuda.is_available()
 )
 
 # Agrupar dataloaders
@@ -113,7 +112,7 @@ dataloaders = {
 
 # Instanciar modelo
 #model = deeplabv3_Sentinel3(num_classes=n_classes, in_channels=n_canais).to(device)
-model = EfficientUNet(in_channels=n_canais, num_classes=n_classes)
+model = EfficientUNet(in_channels=n_canais, num_classes=n_classes).to(device)
 
 
 #%%------------------------------------------------------------------------------------
@@ -153,6 +152,6 @@ if __name__ == '__main__':
         n_epochs   = epocas,
         device     = device,
         patience   = 20,
-        use_amp    = True,
+        use_amp    = False,
         verbose    = True,
     )

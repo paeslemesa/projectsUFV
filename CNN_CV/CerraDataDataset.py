@@ -119,7 +119,7 @@ class CerraDataset(Dataset):
 
         # 6. Volta para [C, H, W] e converte para tensor
         img = np.transpose(img, (2, 0, 1))  # [C, H, W]
-        img_tensor = torch.tensor(img, dtype=torch.float32).to(self.dispositivo)
-        mask_tensor = torch.tensor(mask, dtype=torch.long).to(self.dispositivo)
+        img_tensor = torch.tensor(img, dtype=torch.float32)
+        mask_tensor = torch.tensor(mask, dtype=torch.long)
 
         return img_tensor, mask_tensor
