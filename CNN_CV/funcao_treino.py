@@ -178,8 +178,8 @@ def treino(
 def salvar_logs(history, save_dir):
     """Salva o histórico de treino em CSV."""
     df = pd.DataFrame(history)
-    now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    df.to_csv(os.path.join(save_dir, f'training_log_{now}.csv'), index=False)
+    #now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    df.to_csv(os.path.join(save_dir, f'training_log.csv'), index=False)
     print("📄 Logs salvos em 'training_log.csv'.")
 
 

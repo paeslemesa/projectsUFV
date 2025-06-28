@@ -32,7 +32,7 @@ import funcao_treino
 #------------------------------------------------------------------------------------
 
 # Caminho dos dados
-caminho = "/home/sabrina/Documents/Datasets/cerradata4mm/cerradata_4mm/"
+caminho = "/home/sabrina/Documents/Datasets/cerradata_4mm/"
 
 # Hiperparâmetros
 batch_size       = 32      
@@ -155,3 +155,4 @@ if __name__ == '__main__':
         use_amp    = False,
         verbose    = True,
     )
+5
