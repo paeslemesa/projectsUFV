@@ -37,17 +37,33 @@ class EfficientUNet(nn.Module):
         super().__init__()
 
         # Load EfficientNet encoder from timm
-        self.encoder = timm.create_model('efficientnet_b0', pretrained=False, features_only=True)
+        self.encoder = timm.create_model('efficientnet_b0', pretrained=True, features_only=True)
 
         # Replace first conv layer to support custom input channels
         old_conv = self.encoder.conv_stem
-        self.encoder.conv_stem = nn.Conv2d(
-            in_channels, old_conv.out_channels,
+        new_conv = nn.Conv2d(
+            in_channels,  # 7
+            old_conv.out_channels,
             kernel_size=old_conv.kernel_size,
             stride=old_conv.stride,
             padding=old_conv.padding,
             bias=False
         )
+
+        # Copy pretrained weights from 3-channel conv to 7-channel conv
+        with torch.no_grad():
+            if in_channels > 3:
+                #new_conv.weight[:, :3] = old_conv.weight  # Copy RGB weights
+                # Average or zero-init remaining channels
+                #new_conv.weight[:, 3:] = old_conv.weight[:, :1].repeat(1, in_channels - 3, 1, 1)
+                mean_weight = old_conv.weight.mean(dim=1, keepdim=True)
+                new_conv.weight[:, 3:] = mean_weight.repeat(1, in_channels - 3, 1, 1)
+
+            else:
+                new_conv.weight = nn.Parameter(old_conv.weight[:, :in_channels])
+
+        self.encoder.conv_stem = new_conv
+
 
         # Encoder stages: [stem, block2, block3, block4, block5]
         self.enc_channels = [16, 24, 40, 112, 320]

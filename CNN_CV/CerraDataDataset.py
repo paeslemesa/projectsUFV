@@ -16,7 +16,7 @@ class CerraDataset(Dataset):
         dispositivo: str = 'cpu',
         seed: int = 42,
         red_idx: int = 3,
-        nir_idx: int = 7,
+        nir_idx: int = 4,
         savi_l: float = 0.5,
     ):
         """
@@ -44,10 +44,10 @@ class CerraDataset(Dataset):
             raise ValueError("Número de imagens não casa com número de máscaras.")
 
         self.transformacoes = A.Compose([
-            A.Rotate(limit=45, p=0.8),
+            #A.Rotate(limit=45, p=0.8),
             A.HorizontalFlip(p=0.5),
             A.VerticalFlip(p=0.5),
-            A.RandomCrop(height=128, width=128, p=0.5),
+            #A.RandomCrop(height=128, width=128, p=0.5),
         ]) if transformar else None
 
     def __len__(self):
@@ -102,8 +102,12 @@ class CerraDataset(Dataset):
         img = self._ler_imagem(self.opt_lista[idx])  # [C, H, W]
         mask = self._ler_mascara(self.mascara_lista[idx])  # [H, W]
 
+        
+
         # 2. Calcula índices espectrais e adiciona como novas bandas
         indices = self._calcular_indices(img)  # [3, H, W]
+        # Extrai RGB+NIR
+        img = img[1:5,:,:]
         img = np.concatenate([img, indices], axis=0)  # [C+3, H, W]
 
         # 3. Normaliza imagem

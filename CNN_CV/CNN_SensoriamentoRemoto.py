@@ -35,19 +35,19 @@ import funcao_treino
 caminho = "/home/sabrina/Documents/Datasets/cerradata_4mm/"
 
 # Hiperparâmetros
-batch_size       = 32      
-num_workers      = 20        
+batch_size       = 192
+num_workers      = os.cpu_count() // 2  # or 4, or 8 based on your system
 n_classes        = 7        
-n_canais         = 15       
+n_canais         = 7    
 height, width    = 128, 128
-epocas           = 100    
-taxa_aprendizagem= 1e-2 
-taxa_decaimento  = 1e-2 
+epocas           = 100
+taxa_aprendizagem= 1e-4 
+taxa_decaimento  = 1e-3 
 n_samples        = None
 
 # Verificar se há GPU disponível
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-#print(f"Usando dispositivo: {device}")
+print(f"Usando dispositivo: {device}")
 
 
 #%%------------------------------------------------------------------------------------
@@ -59,16 +59,17 @@ dataset = CerraDataset(
     cam_dir=caminho, 
     dispositivo=device, 
     normalizacao='0a1', 
-    transformar=True
+    transformar=False
 )
 
 if dataset is None or len(dataset) == 0:
     raise ValueError("Dataset não carregado corretamente ou está vazio.")
 
 if n_samples is not None:
-    subset_indices = list(range(100))  # Selecionar os primeiros 10.000 exemplos
-    subset = Subset(dataset, subset_indices)
-    dataset = subset
+    n_samples = min(n_samples, len(dataset))
+    subset_indices = list(range(n_samples))
+    dataset = Subset(dataset, subset_indices)
+
 
 # Dividir em treino e validação
 razao_treino = 0.8
@@ -127,12 +128,26 @@ optimizer = torch.optim.Adam(
 )
 
 # Funções de perda
-ce_loss   = torch.nn.CrossEntropyLoss()
+class SmoothCrossEntropyLoss(torch.nn.Module):
+    def __init__(self, smoothing=0.1):
+        super().__init__()
+        self.smoothing = smoothing
+        self.confidence = 1.0 - smoothing
+
+    def forward(self, logits, target):
+        log_probs = torch.nn.functional.log_softmax(logits, dim=1)
+        nll_loss = -log_probs.gather(dim=1, index=target.unsqueeze(1)).squeeze(1)
+        smooth_loss = -log_probs.mean(dim=1)
+        loss = self.confidence * nll_loss + self.smoothing * smooth_loss
+        return loss.mean()
+
+# Use SmoothCrossEntropy + Dice
+ce_loss = SmoothCrossEntropyLoss(smoothing=0.1)
 dice_loss = funcao_treino.DiceLoss()
 
-def perdas_combinadas(logits, targets):
-    """Média das perdas CrossEntropy e DiceLoss."""
-    return (ce_loss(logits, targets) + dice_loss(logits, targets)) / 2
+def perdas_combinadas(logits, targets, alpha=0.7):
+    return alpha * ce_loss(logits, targets) + (1 - alpha) * dice_loss(logits, targets)
+
 
 
 #%%------------------------------------------------------------------------------------
@@ -148,7 +163,7 @@ if __name__ == '__main__':
         model      = model,
         dataloaders= dataloaders,
         optimizer  = optimizer,
-        criterion  = ce_loss,
+        criterion  = perdas_combinadas,
         n_epochs   = epocas,
         device     = device,
         patience   = 20,
