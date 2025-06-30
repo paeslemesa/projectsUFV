@@ -1,6 +1,7 @@
 #%%-----------------------------------------------------------------------------------------------
 # BIBLIOTECAS
 #-------------------------------------------------------------------------------------------------
+from matplotlib import cm
 import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
@@ -14,6 +15,8 @@ import numpy as np
 import time
 import copy
 import pandas as pd
+
+from sklearn.metrics import confusion_matrix
 
 #%%-----------------------------------------------------------------------------------------------
 # TREINAMENTO
@@ -60,6 +63,7 @@ def treino(
     patience:int=5,
     use_amp:bool=True,
     verbose:bool=True,
+    n_classes:int=7,  # Número de classes para mIoU e acurácia
     save_dir=f"outputs_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"  # Diretório para salvar o modelo e logs,
 ):
     os.makedirs(save_dir, exist_ok=True)
@@ -74,6 +78,7 @@ def treino(
     # Inicializar histórico
     history = []
 
+
     scaler = torch.amp.GradScaler(device=device, enabled=use_amp)
 
     for epoch in range(n_epochs):
@@ -87,11 +92,12 @@ def treino(
             if phase == 'train':
                 model.train()  
             else:
-                model.eval()   
+                model.eval()
+
 
             running_loss = 0.0
             running_acc = 0.0
-            runnin_miou = 0.0
+            running_miou = 0.0
 
             # Iterar sobre os dados
             
@@ -119,12 +125,11 @@ def treino(
 
                 running_loss += loss.item() * inputs.size(0)
                 running_acc  += acc * inputs.size(0)
-                runnin_miou  += mIoU * inputs.size(0)
-
-
+                running_miou  += mIoU * inputs.size(0)
+                loop.set_postfix(loss=loss.item(), acc=acc, mIoU=mIoU)
             epoch_loss = running_loss / len(dataloaders[phase].dataset)
             epoch_acc  = running_acc  / len(dataloaders[phase].dataset)
-            epoch_miou = runnin_miou  / len(dataloaders[phase].dataset)
+            epoch_miou = running_miou  / len(dataloaders[phase].dataset)
 
             if verbose:
                 print(f"📊 {phase.upper()} — Loss: {epoch_loss:.4f} | Acc: {epoch_acc:.4f} | mIoU: {epoch_miou:.4f}")
@@ -141,9 +146,27 @@ def treino(
                 'mIoU': epoch_miou  
             })
 
+
+
             # Fase de validação — verificar Early Stopping e Checkpoint
             if phase == 'val':
                 scheduler.step(epoch_loss)
+                
+                all_preds = []
+                all_labels = []
+
+                all_preds.append(outputs.argmax(dim=1).detach().cpu().numpy())
+                all_labels.append(labels.detach().cpu().numpy())
+                # Flatten and concatenate predictions for confusion matrix
+                preds_flat = np.concatenate([p.flatten() for p in all_preds])
+                labels_flat = np.concatenate([l.flatten() for l in all_labels])
+                cm = confusion_matrix(labels_flat, preds_flat, labels=range(n_classes))
+
+
+                # Save confusion matrix as CSV
+                cm_df = pd.DataFrame(cm, index=[f"true_{i}" for i in range(n_classes)],
+                                        columns=[f"pred_{i}" for i in range(n_classes)])
+                cm_df.to_csv(os.path.join(save_dir, f"confusion_matrix_epoch_{epoch + 1}.csv"))                
 
                 if epoch_loss < best_loss:
                     epochs_no_improve = 0

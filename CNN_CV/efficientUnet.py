@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import timm
+from timm.models.efficientnet import tf_efficientnet_b3_ns  # or the specific model you use
+from timm.models._efficientnet_blocks import SqueezeExcite
 
 
 class ConvBlock(nn.Module):
@@ -32,64 +34,59 @@ class UpBlock(nn.Module):
         return self.conv(x)
 
 
+
 class EfficientUNet(nn.Module):
-    def __init__(self, in_channels=12, num_classes=7):
+    def __init__(self, in_channels=7, num_classes=7, pretrained=True, freeze_encoder=False):
         super().__init__()
 
-        # Load EfficientNet encoder from timm
-        self.encoder = timm.create_model('efficientnet_b0', pretrained=True, features_only=True)
+        # Create encoder with default 3-channel config
+        encoder = timm.create_model('efficientnet_b3', pretrained=False, features_only=True)
+        self.encoder = encoder
 
-        # Replace first conv layer to support custom input channels
+        # Replace first conv layer BEFORE loading pretrained weights
         old_conv = self.encoder.conv_stem
         new_conv = nn.Conv2d(
-            in_channels,  # 7
-            old_conv.out_channels,
+            in_channels=in_channels,
+            out_channels=old_conv.out_channels,
             kernel_size=old_conv.kernel_size,
             stride=old_conv.stride,
             padding=old_conv.padding,
             bias=False
         )
-
-        # Copy pretrained weights from 3-channel conv to 7-channel conv
-        with torch.no_grad():
-            if in_channels > 3:
-                #new_conv.weight[:, :3] = old_conv.weight  # Copy RGB weights
-                # Average or zero-init remaining channels
-                #new_conv.weight[:, 3:] = old_conv.weight[:, :1].repeat(1, in_channels - 3, 1, 1)
-                mean_weight = old_conv.weight.mean(dim=1, keepdim=True)
-                new_conv.weight[:, 3:] = mean_weight.repeat(1, in_channels - 3, 1, 1)
-
-            else:
-                new_conv.weight = nn.Parameter(old_conv.weight[:, :in_channels])
-
         self.encoder.conv_stem = new_conv
 
+        if pretrained:
+            # Load pretrained weights manually (and ignore mismatched shapes)
+            state_dict = timm.create_model('efficientnet_b3', pretrained=True).state_dict()
+            # Remove incompatible weights (e.g., conv_stem)
+            for k in list(state_dict.keys()):
+                if k.startswith("conv_stem") or k.startswith("classifier") or "head" in k:
+                    del state_dict[k]
+            self.encoder.load_state_dict(state_dict, strict=False)
 
-        # Encoder stages: [stem, block2, block3, block4, block5]
-        self.enc_channels = [16, 24, 40, 112, 320]
-        #print([c['num_chs'] for c in self.encoder.feature_info])
-        #print(self.encoder.default_cfg['architecture'])
+        if freeze_encoder:
+            for param in self.encoder.parameters():
+                param.requires_grad = False
 
-        # Decoder upsampling blocks
-        self.up4 = UpBlock(320, 112, 160)
-        self.up3 = UpBlock(160, 40, 96)
-        self.up2 = UpBlock(96, 24, 64)
-        self.up1 = UpBlock(64, 16, 32)
-        self.final_conv = nn.Conv2d(32, num_classes, kernel_size=1)
+        self.enc_channels = [24, 32, 48, 136, 384]
+        
+        # Decoder blocks
+        self.up4 = UpBlock(384, 136, 256)  # 384 from previous layer, 136 from skip
+        self.up3 = UpBlock(256, 48, 128)
+        self.up2 = UpBlock(128, 32, 64)
+        self.up1 = UpBlock(64, 24, 32)
 
         self.final_conv = nn.Conv2d(32, num_classes, kernel_size=1)
 
     def forward(self, x):
-        feats = self.encoder(x)  # get encoder features
+        feats = self.encoder(x)
+
+        #print([f.shape for f in feats])  # This will print 5 feature maps
 
         x = self.up4(feats[4], feats[3])
         x = self.up3(x, feats[2])
         x = self.up2(x, feats[1])
         x = self.up1(x, feats[0])
-
         x = self.final_conv(x)
-
-        # ✅ Upsample to match label size
         x = nn.functional.interpolate(x, size=(128, 128), mode='bilinear', align_corners=False)
-
         return x

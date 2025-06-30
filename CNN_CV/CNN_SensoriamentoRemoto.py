@@ -35,7 +35,7 @@ import funcao_treino
 caminho = "/home/sabrina/Documents/Datasets/cerradata_4mm/"
 
 # Hiperparâmetros
-batch_size       = 192
+batch_size       = 64
 num_workers      = os.cpu_count() // 2  # or 4, or 8 based on your system
 n_classes        = 7        
 n_canais         = 7    
@@ -43,7 +43,8 @@ height, width    = 128, 128
 epocas           = 100
 taxa_aprendizagem= 1e-4 
 taxa_decaimento  = 1e-3 
-n_samples        = None
+n_samples        = None # None para usar todo o dataset
+transforms       = True
 
 # Verificar se há GPU disponível
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -59,7 +60,7 @@ dataset = CerraDataset(
     cam_dir=caminho, 
     dispositivo=device, 
     normalizacao='0a1', 
-    transformar=False
+    transformar=transforms
 )
 
 if dataset is None or len(dataset) == 0:
@@ -88,7 +89,8 @@ train_loader = DataLoader(
     batch_size=batch_size,
     shuffle=True,
     #num_workers=num_workers,
-    pin_memory=torch.cuda.is_available()
+    pin_memory=torch.cuda.is_available(),
+    drop_last=True
 )
 
 # Dataloader para validação
@@ -97,7 +99,8 @@ val_loader = DataLoader(
     batch_size=batch_size,
     shuffle=False,
     #num_workers=num_workers,
-    pin_memory=torch.cuda.is_available()
+    pin_memory=torch.cuda.is_available(),
+    drop_last=False
 )
 
 # Agrupar dataloaders
@@ -163,7 +166,7 @@ if __name__ == '__main__':
         model      = model,
         dataloaders= dataloaders,
         optimizer  = optimizer,
-        criterion  = perdas_combinadas,
+        criterion  = ce_loss,
         n_epochs   = epocas,
         device     = device,
         patience   = 20,
