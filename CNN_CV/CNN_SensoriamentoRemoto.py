@@ -37,10 +37,10 @@ caminho = "/home/sabrina/Documents/Datasets/cerradata_4mm/"
 # Hiperparâmetros
 batch_size       = 64
 num_workers      = os.cpu_count() // 2  # or 4, or 8 based on your system
-n_classes        = 7        
-n_canais         = 7    
+n_classes        = 7   
+n_canais         = 4
 height, width    = 128, 128
-epocas           = 100
+epocas           = 20
 taxa_aprendizagem= 1e-4 
 taxa_decaimento  = 1e-3 
 n_samples        = None # None para usar todo o dataset
@@ -116,7 +116,7 @@ dataloaders = {
 
 # Instanciar modelo
 #model = deeplabv3_Sentinel3(num_classes=n_classes, in_channels=n_canais).to(device)
-model = EfficientUNet(in_channels=n_canais, num_classes=n_classes).to(device)
+model = EfficientUNet(in_channels=n_canais, num_classes=n_classes, pretrained=True).to(device)
 
 
 #%%------------------------------------------------------------------------------------
@@ -166,7 +166,7 @@ if __name__ == '__main__':
         model      = model,
         dataloaders= dataloaders,
         optimizer  = optimizer,
-        criterion  = ce_loss,
+        criterion  = perdas_combinadas,
         n_epochs   = epocas,
         device     = device,
         patience   = 20,
