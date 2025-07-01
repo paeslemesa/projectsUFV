@@ -108,7 +108,7 @@ class CerraDataset(Dataset):
         indices = self._calcular_indices(img)  # [3, H, W]
         # Extrai RGB+NIR
         img = img[1:5,:,:]
-        #img = np.concatenate([img, indices], axis=0)  # [C+3, H, W]
+        img = np.concatenate([img, indices], axis=0)  # [C+3, H, W]
 
         # 3. Normaliza imagem
         img = self._normalizar(img)
