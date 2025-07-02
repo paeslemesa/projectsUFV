@@ -21,7 +21,8 @@ from sklearn.metrics import confusion_matrix
 #%%-----------------------------------------------------------------------------------------------
 # TREINAMENTO
 #-------------------------------------------------------------------------------------------------
-
+class_weights = [1/35.25, 1/58.43, 1/4.43, 1/0.01, 1/0.55, 1/1.32, 1/0.01]
+class_weights = [w / sum(class_weights) for w in class_weights]
 
 class EarlyStopping:
     def __init__(self, patience=15, verbose=True):
@@ -63,14 +64,31 @@ def treino(
     patience:int=5,
     use_amp:bool=True,
     verbose:bool=True,
+    hyperparametros:dict=None,  # Dicionário com hiperparâmetros adicionais
     n_classes:int=7,  # Número de classes para mIoU e acurácia
     save_dir=f"outputs_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"  # Diretório para salvar o modelo e logs,
 ):
+    
+    # Verifica se o diretório de saída existe, caso contrário, cria
     os.makedirs(save_dir, exist_ok=True)
 
+    # Salva hiperparâmetros em um arquivo JSON
+    if hyperparametros is not None:
+        import json
+        with open(os.path.join(save_dir, 'hyperparameters.json'), 'w') as f:
+            json.dump(hyperparametros, f, indent=4)
+        print(f"📄 Hiperparâmetros salvos em 'hyperparameters.json'.")
+
     # Scheduler: reduz a LR se a validação parar de melhorar
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode='min', factor=0.5, patience=5 )  # Variáveis para Early Stopping
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        optimizer,
+        max_lr=1e-3,
+        total_steps=n_epochs * len(dataloaders['train']),
+        pct_start=0.1,
+        div_factor=25,
+    final_div_factor=1e4
+)
+
     best_model_wts = copy.deepcopy(model.state_dict())
     best_loss = float('inf')
     epochs_no_improve = 0
@@ -93,8 +111,6 @@ def treino(
                 model.train()  
             else:
                 model.eval()
-
-
             running_loss = 0.0
             running_acc = 0.0
             running_miou = 0.0
@@ -119,7 +135,9 @@ def treino(
                         mIoU = ValidationMetrics().compute_mean_iou(outputs.argmax(dim=1), labels)
 
                     if phase == 'train':
-                        scaler.scale(loss).backward()
+                        scaled_loss = scaler.scale(loss)
+                        scaled_loss.backward()
+
                         scaler.step(optimizer)
                         scaler.update()
 
@@ -211,6 +229,77 @@ def salvar_logs(history, save_dir):
 #%%-----------------------------------------------------------------------------------------------
 # FUNÇÕES AUXILIARES
 #-------------------------------------------------------------------------------------------------
+
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class WeightedIoULoss(nn.Module):
+    def __init__(self, weights, smooth=1.0):
+        super().__init__()
+        self.weights = torch.tensor(weights).float()
+        self.smooth = smooth
+
+    def forward(self, logits, targets):
+        num_classes = logits.shape[1]
+        probs = torch.softmax(logits, dim=1)
+        targets_one_hot = F.one_hot(targets, num_classes).permute(0, 3, 1, 2).float()
+        if probs.device != self.weights.device:
+            self.weights = self.weights.to(probs.device)
+
+        ious = []
+        for c in range(num_classes):
+            pred_c = probs[:, c]
+            true_c = targets_one_hot[:, c]
+            inter = torch.sum(pred_c * true_c)
+            union = torch.sum(pred_c + true_c - pred_c * true_c)
+            iou = (inter + self.smooth) / (union + self.smooth)
+            ious.append(iou)
+
+        ious = torch.stack(ious)
+        return 1 - torch.sum(ious * self.weights)
+
+
+class WeightedDiceLoss(nn.Module):
+    def __init__(self, weights, smooth=1.0):
+        super().__init__()
+        self.weights = torch.tensor(weights).float()
+        self.smooth = smooth
+
+    def forward(self, logits, targets):
+        num_classes = logits.shape[1]
+        probs = torch.softmax(logits, dim=1)
+        targets_one_hot = F.one_hot(targets, num_classes).permute(0, 3, 1, 2).float()
+        if probs.device != self.weights.device:
+            self.weights = self.weights.to(probs.device)
+
+        dices = []
+        for c in range(num_classes):
+            pred_c = probs[:, c]
+            true_c = targets_one_hot[:, c]
+            inter = torch.sum(pred_c * true_c)
+            union = torch.sum(pred_c + true_c)
+            dice = (2 * inter + self.smooth) / (union + self.smooth)
+            dices.append(dice)
+
+        dices = torch.stack(dices)
+        return 1 - torch.sum(dices * self.weights)
+
+
+class CombinedIoUDiceLoss(nn.Module):
+    def __init__(self, weights, alpha=0.5):
+        super().__init__()
+        self.iou = WeightedIoULoss(weights)
+        self.dice = WeightedDiceLoss(weights)
+        self.alpha = alpha  # balance between Dice and IoU
+
+    def forward(self, logits, targets):
+        return self.alpha * self.dice(logits, targets) + (1 - self.alpha) * self.iou(logits, targets)
+
+
+
+
 class DiceLoss(nn.Module):
     """
     Função de perda Dice Loss para segmentação semântica.
