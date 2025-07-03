@@ -158,46 +158,62 @@ class LovaszSoftmaxLoss(torch.nn.Module):
 #-------------------------------------------------------------------------
 # Focal Tversky Loss
 #-------------------------------------------------------------------------
-class FocalTverskyLoss(torch.nn.Module):
-    def __init__(self, alpha: float = 0.7, beta: float = 0.3, gamma: float = 0.75, smooth: float = 1e-6):
-        """
-        Focal Tversky Loss for semantic segmentation.
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
-        Args:
-            alpha (float): weight for false negatives.
-            beta  (float): weight for false positives.
-            gamma (float): focusing parameter (like focal loss).
-            smooth (float): small constant to avoid division by zero.
+class FocalTverskyLoss(nn.Module):
+    def __init__(
+        self,
+        alpha: float = 0.7,
+        beta:  float = 0.3,
+        gamma: float = 0.75,
+        smooth:float = 1e-6,
+    ):
+        """
+        Focal Tversky Loss, but clamped and masked to avoid NaNs.
         """
         super().__init__()
-        self.alpha = alpha
-        self.beta = beta
-        self.gamma = gamma
+        self.alpha  = alpha
+        self.beta   = beta
+        self.gamma  = gamma
         self.smooth = smooth
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
         """
-        logits: (B, C, H, W) raw model outputs
-        targets: (B, H, W)  integer class labels
+        logits: [B, C, H, W], raw output
+        targets: [B, H, W], integer labels
         """
-        # probabilities
+        # 1) Softmax → probabilities
         probs = F.softmax(logits, dim=1)
-        C = logits.size(1)
+        C     = logits.size(1)
 
-        # one-hot encode targets
-        t = F.one_hot(targets, C).permute(0,3,1,2).float()  # (B, C, H, W)
+        # 2) One-hot encode
+        t = F.one_hot(targets, C).permute(0,3,1,2).float()
 
+        # 3) Compute TP, FP, FN per class
         dims = (0,2,3)  # sum over batch, height, width
+        TP = torch.sum(probs * t,           dim=dims)
+        FP = torch.sum(probs * (1 - t),     dim=dims)
+        FN = torch.sum((1 - probs) * t,     dim=dims)
 
-        # True positives, false negatives, false positives per class
-        TP = torch.sum(probs * t, dims)
-        FN = torch.sum((1 - probs) * t, dims)
-        FP = torch.sum(probs * (1 - t), dims)
+        # 4) Compute Tversky index
+        tversky = (TP + self.smooth) / (
+            TP + self.alpha * FN + self.beta * FP + self.smooth
+        )
 
-        # Tversky index per class
-        tversky = (TP + self.smooth) / (TP + self.alpha*FN + self.beta*FP + self.smooth)
-        # Focal Tversky loss
-        loss = torch.pow((1 - tversky), self.gamma)
+        # 5) Clamp into [0,1] to avoid tiny numerical overshoot
+        tversky = torch.clamp(tversky, min=0.0, max=1.0)
 
-        # average over classes
+        # 6) Mask out classes with no true pixels (so we don’t divide by zero)
+        valid = (TP + FN) > 0  # only classes actually present
+        if valid.sum() == 0:
+            # no classes present? return zero loss
+            return torch.tensor(0.0, device=logits.device, requires_grad=True)
+        tversky = tversky[valid]
+
+        # 7) Focal step
+        loss = torch.pow(1.0 - tversky, self.gamma)
+
+        # 8) Average over valid classes
         return loss.mean()

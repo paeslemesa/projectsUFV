@@ -6,37 +6,42 @@ from timm.models._efficientnet_blocks import SqueezeExcite
 
 
 class ConvBlock(nn.Module):
-    """Basic convolutional block: Conv2D -> BN -> LeakyReLU"""
-    def __init__(self, in_ch, out_ch):
+    """Conv → BN → LeakyReLU → SpatialDropout2d"""
+    def __init__(self, in_ch, out_ch, dropout_p=0.1):
         super().__init__()
-        self.block = nn.Sequential(
+        layers = [
             nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=1, bias=False),
             nn.BatchNorm2d(out_ch),
             nn.LeakyReLU(inplace=True),
-        )
+        ]
+        if dropout_p > 0:
+            layers.append(nn.Dropout2d(p=dropout_p))
+        self.block = nn.Sequential(*layers)
 
     def forward(self, x):
         return self.block(x)
 
 
+
 class UpBlock(nn.Module):
-    """Upsampling block with skip connections"""
-    def __init__(self, in_ch, skip_ch, out_ch):
+    def __init__(self, in_ch, skip_ch, out_ch, dropout_p=0.1):
         super().__init__()
         self.up = nn.ConvTranspose2d(in_ch, out_ch, kernel_size=2, stride=2)
-        self.conv = ConvBlock(out_ch + skip_ch, out_ch)
+        # after concat, we get out_ch + skip_ch → pass dropout through ConvBlock
+        self.conv = ConvBlock(out_ch + skip_ch, out_ch, dropout_p=dropout_p)
 
     def forward(self, x, skip):
         x = self.up(x)
         if skip.shape[2:] != x.shape[2:]:
-            x = nn.functional.interpolate(x, size=skip.shape[2:], mode='bilinear', align_corners=False)
+            x = torch.nn.functional.interpolate(x, size=skip.shape[2:], mode='bilinear', align_corners=False)
         x = torch.cat([x, skip], dim=1)
         return self.conv(x)
 
-
-
+#%%------------------------------------------------------------------------------------
+# EfficientUNet model using EfficientNet as encoder
+#------------------------------------------------------------------------------------
 class EfficientUNet(nn.Module):
-    def __init__(self, in_channels=7, num_classes=7, pretrained=True, freeze_encoder=False):
+    def __init__(self, in_channels=7, num_classes=7, dropout_p=0.1, pretrained=True, freeze_encoder=False):
         super().__init__()
 
         # Create encoder with default 3-channel config
@@ -71,10 +76,10 @@ class EfficientUNet(nn.Module):
         self.enc_channels = [24, 32, 48, 136, 384]
         
         # Decoder blocks
-        self.up4 = UpBlock(384, 136, 256)  # 384 from previous layer, 136 from skip
-        self.up3 = UpBlock(256, 48, 128)
-        self.up2 = UpBlock(128, 32, 64)
-        self.up1 = UpBlock(64, 24, 32)
+        self.up4 = UpBlock(384, 136, 256, dropout_p=dropout_p)  # 384 from previous layer, 136 from skip
+        self.up3 = UpBlock(256, 48, 128, dropout_p=dropout_p)
+        self.up2 = UpBlock(128, 32, 64, dropout_p=dropout_p)
+        self.up1 = UpBlock(64, 24, 32, dropout_p=dropout_p)
 
         self.final_conv = nn.Conv2d(32, num_classes, kernel_size=1)
 

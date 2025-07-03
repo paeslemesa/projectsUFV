@@ -26,6 +26,7 @@ from efficientUnet import EfficientUNet
 # Funções auxiliares
 import funcao_treino
 import losses
+import sampler
 
 
 #%%------------------------------------------------------------------------------------
@@ -37,10 +38,9 @@ caminho = "/home/sabrina/Documents/Datasets/cerradata_4mm/"
 
 # Hiperparâmetros
 batch_size       = 64
-msi_bands        = [3,2,1,4] # Bandas MSI: RGB + NIR
+msi_bands        = [3,2,7] # Bandas MSI: RGB + NIR
+sar_bands        = False # Bandas SAR: VV e VH
 num_workers      = 10  # or 4, or 8 based on your system
-n_classes        = 7
-n_canais         = len(msi_bands) + 2 # 7 bandas ópticas + 2 bandas SAR + 3 indices espectrais (EVI2, NDVI, SAVI)
 veg_indexes      = False  # Calcular EVI2, NDVI e SAVI
 height, width    = 128, 128
 epocas           = 100
@@ -49,6 +49,8 @@ taxa_decaimento  = 1e-3
 n_samples        = None # None para usar todo o dataset
 transforms       = True
 pretreino        = True  # Usar pesos pré-treinados do EfficientNet
+n_classes        = 7  # Número de classes (0-6)
+n_canais         = len(msi_bands) + (2 if sar_bands else 0) + (3 if veg_indexes else 0)  # 7 bandas ópticas + 2 bandas SAR + 3 indices espectrais (EVI2, NDVI, SAVI)
 
 
 
@@ -93,6 +95,7 @@ dataset = CerraDataset(
     normalizacao='1a1', 
     transformar=transforms,
     bands=msi_bands,  # RGB + NIR
+    sar_bands=sar_bands,  # Bandas SAR (VV e VH)
     veg_indexes=veg_indexes,  # Calcular EVI2, NDVI e SAVI
 )
 
@@ -115,6 +118,8 @@ train_dataset, val_dataset = random_split(
     [tam_treino, tam_val], 
     generator=torch.Generator().manual_seed(42)
 )
+
+#train_sampler = sampler.make_sampler(train_dataset, n_classes=n_classes)
 
 # Dataloader para treino
 train_loader = DataLoader(
@@ -178,11 +183,11 @@ if __name__ == '__main__':
         dataloaders     = dataloaders,
         optimizer       = optimizer,
         #criterion      = WeightedIoULoss(class_weights),
-        criterion       = losses.FocalTverskyLoss(),
+        criterion       = losses.FocalTverskyLoss(alpha=0.7, beta=0.3, gamma=0.75),
         n_epochs        = epocas,
         device          = device,
         patience        = 20,
-        use_amp         = True,
+        use_amp         = False,
         hyperparametros = hiperparametros,
         verbose         = True,
     )
