@@ -20,11 +20,12 @@ import numpy as np
 from CerraDataDataset import CerraDataset
 
 # Modelo
-from DeepLabV3 import deeplabv3_Sentinel3
+#from DeepLabV3 import deeplabv3_Sentinel3
 from efficientUnet import EfficientUNet
 
 # Funções auxiliares
 import funcao_treino
+import losses
 
 
 #%%------------------------------------------------------------------------------------
@@ -36,19 +37,49 @@ caminho = "/home/sabrina/Documents/Datasets/cerradata_4mm/"
 
 # Hiperparâmetros
 batch_size       = 64
-num_workers      = os.cpu_count() // 2  # or 4, or 8 based on your system
-n_classes        = 7   
-n_canais         = 4
+msi_bands        = [3,2,1,4] # Bandas MSI: RGB + NIR
+num_workers      = 10  # or 4, or 8 based on your system
+n_classes        = 7
+n_canais         = len(msi_bands) + 2 # 7 bandas ópticas + 2 bandas SAR + 3 indices espectrais (EVI2, NDVI, SAVI)
+veg_indexes      = False  # Calcular EVI2, NDVI e SAVI
 height, width    = 128, 128
-epocas           = 20
-taxa_aprendizagem= 1e-4 
+epocas           = 100
+taxa_aprendizagem= 1e-2
 taxa_decaimento  = 1e-3 
 n_samples        = None # None para usar todo o dataset
 transforms       = True
+pretreino        = False  # Usar pesos pré-treinados do EfficientNet
+
+
+
+#%%------------------------------------------------------------------------------------
+# VERIFICAÇÃO DE HIPERPARÂMETROS
+if pretreino:
+    taxa_aprendizagem = taxa_aprendizagem * 1e-2  # Reduzir taxa de aprendizado se usar pesos pré-treinados
+    print("Usando pesos pré-treinados do EfficientNet. Taxa de aprendizado ajustada para:", taxa_aprendizagem)
 
 # Verificar se há GPU disponível
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f"Usando dispositivo: {device}")
+
+# Criar um dicionário de hiperparâmetros
+hiperparametros = {
+    "batch_size": batch_size,
+    "num_workers": num_workers,
+    "msi_bands": ",".join(str(element) for element in msi_bands),
+    "n_classes": n_classes,
+    "n_canais": n_canais,
+    "veg_indexes": veg_indexes,
+    "device": str(device),
+    "height": height,
+    "width": width,
+    "epocas": epocas,
+    "taxa_aprendizagem": taxa_aprendizagem,
+    "taxa_decaimento": taxa_decaimento,
+    "n_samples": n_samples,
+    "transforms": transforms,
+    "pretreino": pretreino
+}
 
 
 #%%------------------------------------------------------------------------------------
@@ -59,8 +90,10 @@ print(f"Usando dispositivo: {device}")
 dataset = CerraDataset(
     cam_dir=caminho, 
     dispositivo=device, 
-    normalizacao='0a1', 
-    transformar=transforms
+    normalizacao='1a1', 
+    transformar=transforms,
+    bands=msi_bands,  # RGB + NIR
+    veg_indexes=veg_indexes,  # Calcular EVI2, NDVI e SAVI
 )
 
 if dataset is None or len(dataset) == 0:
@@ -88,8 +121,9 @@ train_loader = DataLoader(
     train_dataset,
     batch_size=batch_size,
     shuffle=True,
-    #num_workers=num_workers,
+    num_workers=num_workers,
     pin_memory=torch.cuda.is_available(),
+    persistent_workers= True,  # Manter workers persistentes se num_workers > 0
     drop_last=True
 )
 
@@ -98,8 +132,9 @@ val_loader = DataLoader(
     val_dataset,
     batch_size=batch_size,
     shuffle=False,
-    #num_workers=num_workers,
+    num_workers=num_workers,
     pin_memory=torch.cuda.is_available(),
+    persistent_workers=True,  # Manter workers persistentes se num_workers > 0
     drop_last=False
 )
 
@@ -116,42 +151,18 @@ dataloaders = {
 
 # Instanciar modelo
 #model = deeplabv3_Sentinel3(num_classes=n_classes, in_channels=n_canais).to(device)
-model = EfficientUNet(in_channels=n_canais, num_classes=n_classes, pretrained=True).to(device)
+model = EfficientUNet(in_channels=n_canais, num_classes=n_classes, pretrained=pretreino).to(device)
 
 
 #%%------------------------------------------------------------------------------------
 # OTIMIZADOR E FUNÇÃO DE PERDA
 #------------------------------------------------------------------------------------
-
 # Otimizador
-optimizer = torch.optim.Adam(
+optimizer = torch.optim.AdamW(
     model.parameters(),
     lr=taxa_aprendizagem,
     weight_decay=taxa_decaimento
 )
-
-# Funções de perda
-class SmoothCrossEntropyLoss(torch.nn.Module):
-    def __init__(self, smoothing=0.1):
-        super().__init__()
-        self.smoothing = smoothing
-        self.confidence = 1.0 - smoothing
-
-    def forward(self, logits, target):
-        log_probs = torch.nn.functional.log_softmax(logits, dim=1)
-        nll_loss = -log_probs.gather(dim=1, index=target.unsqueeze(1)).squeeze(1)
-        smooth_loss = -log_probs.mean(dim=1)
-        loss = self.confidence * nll_loss + self.smoothing * smooth_loss
-        return loss.mean()
-
-# Use SmoothCrossEntropy + Dice
-ce_loss = SmoothCrossEntropyLoss(smoothing=0.1)
-dice_loss = funcao_treino.DiceLoss()
-
-def perdas_combinadas(logits, targets, alpha=0.7):
-    return alpha * ce_loss(logits, targets) + (1 - alpha) * dice_loss(logits, targets)
-
-
 
 #%%------------------------------------------------------------------------------------
 # TREINAMENTO
@@ -163,14 +174,16 @@ if __name__ == '__main__':
 
 
     modelo_treinado = funcao_treino.treino(
-        model      = model,
-        dataloaders= dataloaders,
-        optimizer  = optimizer,
-        criterion  = perdas_combinadas,
-        n_epochs   = epocas,
-        device     = device,
-        patience   = 20,
-        use_amp    = False,
-        verbose    = True,
+        model           = model,
+        dataloaders     = dataloaders,
+        optimizer       = optimizer,
+        #criterion      = WeightedIoULoss(class_weights),
+        criterion       = losses.FocalTverskyLoss(),
+        n_epochs        = epocas,
+        device          = device,
+        patience        = 20,
+        use_amp         = True,
+        hyperparametros = hiperparametros,
+        verbose         = True,
     )
 5
