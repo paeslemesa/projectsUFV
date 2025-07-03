@@ -48,7 +48,7 @@ taxa_aprendizagem= 1e-2
 taxa_decaimento  = 1e-3 
 n_samples        = None # None para usar todo o dataset
 transforms       = True
-pretreino        = True  # Usar pesos pré-treinados do EfficientNet
+pretreino        = False  # Usar pesos pré-treinados do EfficientNet
 
 
 
