@@ -16,6 +16,7 @@ class CerraDataset(Dataset):
         dispositivo: str = 'cpu',
         seed: int = 42,
         bands: list = [3, 1, 2, 4],  # RGB + NIR
+        sar_bands: bool = False,
         veg_indexes = True, # Indica se deve calcular EVI2, NDVI e SAVI
         red_idx: int = 3,
         nir_idx: int = 4,
@@ -30,6 +31,7 @@ class CerraDataset(Dataset):
         self.dispositivo = dispositivo
         self.seed = seed
         self.bands = bands 
+        self.sar_bands = sar_bands  # Indica se deve carregar bandas SAR
         self.veg_indexes = veg_indexes  # Indica se deve calcular EVI2, NDVI e SAVI
         self.red_idx = red_idx
         self.nir_idx = nir_idx
@@ -42,7 +44,8 @@ class CerraDataset(Dataset):
 
         # Caminhos de imagens e máscaras
         self.opt_lista = sorted(glob.glob(os.path.join(cam_dir, 'msi_images', '*.tif')))
-        self.sar_lista = sorted(glob.glob(os.path.join(cam_dir, 'sar_images', '*.tif')))
+        if sar_bands:
+            self.sar_lista = sorted(glob.glob(os.path.join(cam_dir, 'sar_images', '*.tif')))
         self.mascara_lista = sorted(glob.glob(os.path.join(cam_dir, 'semantic_7c', '*.tif')))
 
         if len(self.opt_lista) != len(self.mascara_lista):
@@ -132,21 +135,26 @@ class CerraDataset(Dataset):
     def __getitem__(self, idx):
         # 1. Carrega imagem e máscara
         img_optical = self._ler_imagem(self.opt_lista[idx])  # [C, H, W]
-        img_sar = self._ler_imagem(self.sar_lista[idx])  # [C, H, W] 
-        mask = self._ler_mascara(self.mascara_lista[idx])  # [H, W]  
+        if self.sar_bands:
+            img_sar = self._ler_imagem(self.sar_lista[idx])  # [C, H, W]
+        mask = self._ler_mascara(self.mascara_lista[idx])  # [H, W]
 
         # 2. Calcula índices espectrais e adiciona como novas bandas
         indices = self._calcular_indices(img_optical)  # [3, H, W]
         
         # 3. Normaliza imagens
         img_optical = self._normalizar(img_optical, modality='msi')  # Normaliza MSI
-        img_sar = self._normalizar(img_sar, modality='sar')  # Normaliza SAR
+        if self.sar_bands:
+            img_sar = self._normalizar(img_sar, modality='sar')  # Normaliza SAR
 
         # 4. Seleciona bandas específicas
         img_optical = img_optical[self.bands,:,:] # RGBNIR (3, 1, 2, 4 são os índices das bandas RGB+NIR)
         
         # 5. Empilha imagens ópticas e SAR
-        img = np.concatenate([img_optical, img_sar], axis=0)  # [OPT + SAR, H, W]
+        if self.sar_bands:
+            img = np.concatenate([img_optical, img_sar], axis=0)  # [OPT + SAR, H, W]
+        else:
+            img = img_optical  # [OPT, H, W]
 
         # 6. Adiciona índices espectrais se necessário
         if self.veg_indexes:

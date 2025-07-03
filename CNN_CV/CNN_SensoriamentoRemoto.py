@@ -22,6 +22,7 @@ from CerraDataDataset import CerraDataset
 # Modelo
 #from DeepLabV3 import deeplabv3_Sentinel3
 from efficientUnet import EfficientUNet
+from unet import UNet
 
 # Funções auxiliares
 import funcao_treino
@@ -36,12 +37,12 @@ import losses
 caminho = "/home/sabrina/Documents/Datasets/cerradata_4mm/"
 
 # Hiperparâmetros
-batch_size       = 64
+batch_size       = 128
 msi_bands        = [3,2,1,4] # Bandas MSI: RGB + NIR
 num_workers      = 10  # or 4, or 8 based on your system
 n_classes        = 7
-n_canais         = len(msi_bands) + 2 # 7 bandas ópticas + 2 bandas SAR + 3 indices espectrais (EVI2, NDVI, SAVI)
-veg_indexes      = False  # Calcular EVI2, NDVI e SAVI
+veg_indexes      = True  # Calcular EVI2, NDVI e SAVI
+sar_bands       =  False  # Bandas SAR: VV e VH
 height, width    = 128, 128
 epocas           = 100
 taxa_aprendizagem= 1e-2
@@ -49,6 +50,8 @@ taxa_decaimento  = 1e-3
 n_samples        = None # None para usar todo o dataset
 transforms       = True
 pretreino        = False  # Usar pesos pré-treinados do EfficientNet
+modelo           = "UNet"  # Modelo a ser usado: "EfficientUNet" ou "UNet"
+n_canais         = len(msi_bands) + (2 if sar_bands else 0) + (3 if veg_indexes else 0)
 
 
 
@@ -67,6 +70,7 @@ hiperparametros = {
     "batch_size": batch_size,
     "num_workers": num_workers,
     "msi_bands": ",".join(str(element) for element in msi_bands),
+    "sar_bands": sar_bands,  # Bandas SAR (2 bandas)
     "n_classes": n_classes,
     "n_canais": n_canais,
     "veg_indexes": veg_indexes,
@@ -78,7 +82,8 @@ hiperparametros = {
     "taxa_decaimento": taxa_decaimento,
     "n_samples": n_samples,
     "transforms": transforms,
-    "pretreino": pretreino
+    "pretreino": pretreino,
+    "modelo": modelo
 }
 
 
@@ -93,6 +98,7 @@ dataset = CerraDataset(
     normalizacao='1a1', 
     transformar=transforms,
     bands=msi_bands,  # RGB + NIR
+    sar_bands=sar_bands,  # Bandas SAR: VV e VH
     veg_indexes=veg_indexes,  # Calcular EVI2, NDVI e SAVI
 )
 
@@ -150,9 +156,14 @@ dataloaders = {
 #------------------------------------------------------------------------------------
 
 # Instanciar modelo
-#model = deeplabv3_Sentinel3(num_classes=n_classes, in_channels=n_canais).to(device)
-model = EfficientUNet(in_channels=n_canais, num_classes=n_classes, pretrained=pretreino).to(device)
-
+if modelo == "EfficientUNet":
+    from efficientUnet import EfficientUNet
+    model = EfficientUNet(in_channels=n_canais, num_classes=n_classes, pretrained=pretreino).to(device)
+elif modelo == "UNet":
+    from unet import UNet
+    model = UNet(in_channels=n_canais, out_channels=n_classes).to(device)
+else:
+    raise ValueError(f"Modelo '{modelo}' não reconhecido. Use 'EfficientUNet' ou 'UNet'.")
 
 #%%------------------------------------------------------------------------------------
 # OTIMIZADOR E FUNÇÃO DE PERDA
