@@ -50,13 +50,30 @@ Run the model and wait until it finishes.
 
 This is the training process:
 
-![Training process flowchart](H:\Meu Drive\2025-1\INF692\TrabalhoFinal\fluxo_treino.drawio)
+![fluxo_treino drawio](https://github.com/user-attachments/assets/0bc038fd-f2b7-4311-87a0-c8ed4a355fb6)
+
+
 
 ---
 ### 1.2.Analysing results
 
 After the training phase is completed, you can analyse the results in the notebook <code>output_analysis.ipynb</code>.
 There, you can print the model summary as a TXT file and as a flowchart. You can also plot **Loss** and **Validation metrics** per epoch, which are automatically saved to the output directory.
+
+There are 4 files for each model:
+- TXT file for the model containing the total number of parameters;
+  - <code> model_summary_efficient_net.txt</code>
+  - <code> model_summary_unet.txt</code>
+- Flowchart of the model with three different depths:
+  - Depth = 2
+      - <code> efficientunet_graph_depth_2.pdf</code>
+      - <code> unet_graph_depth_2.pdf</code>
+  - Depth = 3
+      - <code> efficientunet_graph_depth_3.pdf</code>
+      - <code> unet_graph_depth_3.pdf</code>
+  - Depth = 4
+      - <code> efficientunet_graph_depth_4.pdf</code>
+      - <code> unet_graph_depth_4.pdf</code>
 
 ---
 ### 1.3. Predictions
