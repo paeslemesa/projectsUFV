@@ -1,0 +1,8 @@
+APRESENTAÇÃO: https://docs.google.com/presentation/d/e/2PACX-1vTlAiReITqIHmN3R5c8x4eIyKVaY09XDSm4XtXUMVbeXg8wHQtKnqoJfEOrNcKoSfOialckMjVHXw3C/pub?start=false&loop=false&delayms=3000
+
+
+RESULTADOS: https://drive.google.com/drive/folders/1WzPrL1w6D_HJ-0je1l61tL3BuG98BAhx?usp=sharing
+
+GITHUB: https://github.com/paeslemesa/projectsUFV/tree/main
+
+DATASET (30gb): https://www.kaggle.com/datasets/cerranet/cerradata-4mm
